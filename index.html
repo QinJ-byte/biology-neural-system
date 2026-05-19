@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>神经调节智能闯关 · AI形成性评价</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="bg-dna" aria-hidden="true"></div>
+  <div class="bg-grid" aria-hidden="true"></div>
+  <div class="bg-glow bg-glow--1" aria-hidden="true"></div>
+  <div class="bg-glow bg-glow--2" aria-hidden="true"></div>
+
+  <header class="site-header">
+    <div class="brand">
+      <span class="brand__icon" aria-hidden="true">
+        <svg viewBox="0 0 32 32" width="32" height="32" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="16" cy="16" r="14" stroke="currentColor" stroke-width="1.2" opacity="0.4"/>
+          <path d="M8 16c4-6 12-6 16 0s-12 6-16 0" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <circle cx="10" cy="16" r="2" fill="currentColor"/>
+          <circle cx="22" cy="16" r="2" fill="currentColor"/>
+        </svg>
+      </span>
+      <div class="brand__text">
+        <h1>神经调节智能闯关</h1>
+        <p class="brand__sub">基于 AI 形成性评价 · 高中生物预习</p>
+      </div>
+    </div>
+    <div class="header-meta" id="headerMeta"></div>
+  </header>
+
+  <main class="main">
+    <section id="screenLoading" class="panel panel--loading">
+      <div class="loader">
+        <div class="loader__ring"></div>
+        <p>AI 正在载入神经调节题库…</p>
+      </div>
+      <p class="load-error" id="loadError" hidden></p>
+    </section>
+
+    <section id="screenQuiz" class="panel panel--quiz" hidden>
+      <div class="quiz-top">
+        <div class="progress-wrap">
+          <div class="progress-label">
+            <span>闯关进度</span>
+            <span id="progressText">1 / 1</span>
+          </div>
+          <div class="progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-label="闯关进度">
+            <div class="progress-bar__fill" id="progressFill"></div>
+          </div>
+        </div>
+        <span class="badge badge--pulse" id="knowledgeTag"></span>
+      </div>
+
+      <article class="question-card">
+        <p class="question-card__index" id="questionIndex"></p>
+        <h2 class="question-card__text" id="questionText"></h2>
+        <ul class="options" id="optionsList" role="radiogroup" aria-label="选项"></ul>
+
+        <div class="feedback-zone" id="feedbackZone" hidden aria-live="polite">
+          <div class="feedback feedback--status" id="feedbackStatus">
+            <p class="feedback__title" id="feedbackTitle"></p>
+          </div>
+          <div class="ai-feedback" id="aiFeedback" hidden>
+            <div class="ai-feedback__header">
+              <span class="ai-feedback__badge">AI 形成性反馈</span>
+              <span class="ai-feedback__option" id="wrongOptionLabel"></span>
+            </div>
+            <div class="feedback-cards" id="feedbackCards"></div>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button type="button" class="btn btn--primary" id="btnSubmit" disabled>提交答案</button>
+        </div>
+      </article>
+    </section>
+
+    <section id="screenResult" class="panel panel--result" hidden>
+      <div class="result-hero">
+        <span class="result-hero__badge">MISSION COMPLETE</span>
+        <h2 class="result-title">闯关完成 · AI 学习报告</h2>
+      </div>
+
+      <div class="result-stats">
+        <div class="stat-card stat-card--highlight">
+          <span class="stat-card__label">正确率（首次作答）</span>
+          <span class="stat-card__value" id="statAccuracy">—</span>
+          <div class="stat-ring" id="statRing" aria-hidden="true"></div>
+        </div>
+        <div class="stat-card">
+          <span class="stat-card__label">一次答对</span>
+          <span class="stat-card__value" id="statFirstCorrect">—</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-card__label">题目总数</span>
+          <span class="stat-card__value" id="statTotal">—</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-card__label">错误次数</span>
+          <span class="stat-card__value stat-card__value--warn" id="statErrors">—</span>
+        </div>
+      </div>
+
+      <div class="result-block">
+        <h3>
+          <span class="block-icon" aria-hidden="true">◆</span>
+          薄弱知识点统计
+        </h3>
+        <p class="result-block__desc">根据作答错误记录，汇总需重点巩固的知识模块。</p>
+        <ul class="tag-list" id="weakKnowledge"></ul>
+      </div>
+
+      <div class="result-block result-block--ai">
+        <h3>
+          <span class="block-icon block-icon--ai" aria-hidden="true">◇</span>
+          AI 学习评语
+        </h3>
+        <div class="ai-report" id="aiComment"></div>
+      </div>
+
+      <div class="result-block result-block--tips">
+        <h3>
+          <span class="block-icon" aria-hidden="true">→</span>
+          个性化学习建议
+        </h3>
+        <ul class="tips-list" id="studyTips"></ul>
+      </div>
+
+      <button type="button" class="btn btn--cta" id="btnRestart">重新闯关</button>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <span>NEURAL REGULATION AI LAB</span>
+    <span class="footer-dot">·</span>
+    <span>纯前端 · 形成性评价引擎</span>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
