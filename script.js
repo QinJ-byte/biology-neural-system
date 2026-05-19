@@ -1,6 +1,25 @@
 (function () {
   "use strict";
 
+  /** 腾讯问卷地址（q1–q6 对应各字段预填） */
+  const TENCENT_FORM_URL = "https://wj.qq.com/s2/26738624/0185/";
+
+  /**
+   * 教师视角统一数据对象，便于后续扩展（导出、统计看板等）
+   * @type {{ studentName: string, className: string, accuracy: string, wrongQuestions: string, weakKnowledge: string, aiComment: string }}
+   */
+  const teacherData = {
+    studentName: "",
+    className: "",
+    accuracy: "",
+    wrongQuestions: "",
+    weakKnowledge: "",
+    aiComment: "",
+  };
+
+  /** 本次闯关结算快照（不含姓名班级） */
+  let sessionSnapshot = null;
+
   const els = {
     screenLoading: document.getElementById("screenLoading"),
     screenQuiz: document.getElementById("screenQuiz"),
@@ -29,6 +48,10 @@
     aiComment: document.getElementById("aiComment"),
     studyTips: document.getElementById("studyTips"),
     btnRestart: document.getElementById("btnRestart"),
+    studentName: document.getElementById("studentName"),
+    className: document.getElementById("className"),
+    btnSubmitReport: document.getElementById("btnSubmitReport"),
+    reportHint: document.getElementById("reportHint"),
   };
 
   let questions = [];
@@ -260,87 +283,159 @@
     renderQuestion();
   }
 
-  function generateAIComment(firstOk, total, weakSorted) {
-    const pct = total ? Math.round((firstOk / total) * 100) : 0;
+  function getWeakSorted() {
+    return Object.keys(knowledgeErrorCount)
+      .map(function (k) {
+        return [k, knowledgeErrorCount[k]];
+      })
+      .sort(function (a, b) {
+        return b[1] - a[1];
+      });
+  }
+
+  /** 收集曾答错题目的序号与题干 */
+  function collectWrongQuestionLines() {
+    const lines = [];
+    for (let i = 0; i < questions.length; i++) {
+      if (!everWrongOnQuestion[i]) continue;
+      const q = questions[i];
+      const num = q.id != null ? q.id : i + 1;
+      lines.push("第" + num + "题：" + (q.question || "").trim());
+    }
+    return lines;
+  }
+
+  /** 未掌握知识点：去重、保序 */
+  function collectWeakKnowledgeList() {
+    const seen = {};
+    const list = [];
+    for (let i = 0; i < questions.length; i++) {
+      if (!everWrongOnQuestion[i]) continue;
+      const k = questions[i].knowledge;
+      if (!k || seen[k]) continue;
+      seen[k] = true;
+      list.push(k);
+    }
+    return list;
+  }
+
+  function formatWrongQuestionsText(lines) {
+    if (!lines.length) return "无";
+    return lines.join("\n");
+  }
+
+  function formatWeakKnowledgeText(list) {
+    if (!list.length) return "无";
+    return list.join("、");
+  }
+
+  /**
+   * 动态生成教师风格 AI 评语（纯文本，用于问卷与 teacherData）
+   */
+  function generateTeacherCommentPlain(stats) {
+    const pct = stats.accuracyPct;
+    const wrongQCount = stats.wrongQuestionCount;
+    const weakCount = stats.weakKnowledgeList.length;
+    const weakSorted = stats.weakSorted;
+    const total = stats.total;
+    const firstOk = stats.firstOk;
+    const wrongTimes = stats.wrongTimes;
+
     const parts = [];
 
     parts.push(
-      '<p>同学你好，本次<strong>神经调节</strong>智能闯关共完成 <strong>' +
+      "你已完成本次「神经调节」智能闯关（共 " +
         total +
-        "</strong> 题，首次作答正确率为 <strong>" +
+        " 题，首次作答正确率 " +
         pct +
-        "%</strong>（" +
-        firstOk +
-        "/" +
-        total +
-        "）。</p>"
+        "%）。"
     );
 
-    if (weakSorted.length === 0) {
+    if (pct >= 90) {
       parts.push(
-        "<p>你在各知识模块的首次作答表现优秀，对神经系统结构、反射与神经调节等核心概念掌握扎实，已形成良好的知识网络。</p>"
+        "你对神经调节基础知识掌握扎实，已经具备较好的知识网络结构，能够较准确地区分核心概念。"
       );
-      return parts.join("");
-    }
-
-    const top = weakSorted[0];
-    const topName = top[0];
-    const topCount = top[1];
-
-    parts.push(
-      "<p>从形成性评价角度看，你在闯关过程中对以下模块需要加强：<strong>" +
-        weakSorted
-          .map(function (item) {
-            return item[0] + "（错 " + item[1] + " 次）";
-          })
-          .join("、") +
-        "</strong>。</p>"
-    );
-
-    if (topName === "反射弧" || topName === "反射过程" || topName === "反射") {
-      parts.push(
-        "<p>其中 <strong>" +
-          topName +
-          "</strong> 相关题目错误 " +
-          topCount +
-          " 次，说明你对<strong>反射弧结构顺序</strong>或<strong>反射发生过程</strong>仍存在混淆。建议重点梳理「感受器→传入→中枢→传出→效应器」的传导逻辑，并区分反射起点与感觉形成的时间先后。</p>"
-      );
-    } else if (topName === "中枢神经系统" || topName === "外周神经系统") {
-      parts.push(
-        "<p>你在 <strong>" +
-          topName +
-          "</strong> 上错误较多，反映出对<strong>神经系统结构层级</strong>的划分仍不够清晰。建议用结构图区分「中枢（脑+脊髓）」与「外周（脑神经+脊神经）」，避免将功能分类与结构分类混为一谈。</p>"
-      );
-    } else if (topName === "树突的功能" || topName === "轴突的功能" || topName === "神经元") {
-      parts.push(
-        "<p>你在 <strong>" +
-          topName +
-          "</strong> 方面存在薄弱，可能与<strong>神经元结构与功能对应</strong>或<strong>基本单位概念</strong>有关。建议对照神经元模式图，强化「树突接受、轴突传出、神经元是基本单位」等核心结论。</p>"
-      );
-    } else {
-      const advice = KNOWLEDGE_ADVICE[topName];
-      parts.push(
-        "<p>你在 <strong>" +
-          topName +
-          "</strong> 模块错误较为集中（" +
-          topCount +
-          " 次）。" +
-          (advice ? "主要问题可能集中在「" + advice.focus + "」。" : "") +
-          " 请结合 AI 形成性反馈中的错因分析，有针对性地回顾教材相关段落。</p>"
-      );
-    }
-
-    if (pct >= 80) {
-      parts.push("<p>整体基础较好，针对薄弱点精练后即可进入下一阶段学习。</p>");
     } else if (pct >= 60) {
-      parts.push("<p>你已具备一定基础，建议针对薄弱模块进行专项巩固后再闯关一次。</p>");
+      parts.push(
+        "你已基本掌握核心知识，但部分概念之间仍存在混淆，需要进一步强化理解与辨析能力。"
+      );
     } else {
       parts.push(
-        "<p>建议先系统复习「神经系统的组成与功能」整节内容，再借助本系统的选项级反馈逐题订正，夯实概念后再挑战闯关。</p>"
+        "当前对神经调节知识的理解仍不稳定，建议重新梳理反射弧与神经系统结构等核心内容，夯实基础后再推进拓展学习。"
       );
     }
 
-    return parts.join("");
+    if (wrongQCount === 0) {
+      parts.push(
+        "本次闯关各题首次作答均正确，说明课前预习效果良好，请继续保持并尝试向同学讲解重点，以教促学。"
+      );
+    } else {
+      parts.push(
+        "本次共有 " +
+          wrongQCount +
+          " 道题在作答过程中出现过错误（累计错选 " +
+          wrongTimes +
+          " 次），涉及 " +
+          weakCount +
+          " 个知识模块，建议结合系统给出的选项级反馈逐题订正。"
+      );
+
+      if (weakCount > 0) {
+        const names = stats.weakKnowledgeList.join("、");
+        parts.push("需重点巩固的知识点包括：" + names + "。");
+
+        const top = weakSorted[0] ? weakSorted[0][0] : "";
+        if (top === "反射弧" || top === "反射过程" || top === "反射") {
+          parts.push(
+            "其中反射相关内容的错误较为突出，请重点理清反射弧五环节顺序及兴奋传导的时间先后，避免将感觉形成与反射起点混为一谈。"
+          );
+        } else if (top === "中枢神经系统" || top === "外周神经系统") {
+          parts.push(
+            "神经系统结构层级是你目前的薄弱方向，建议对照结构图区分中枢（脑、脊髓）与外周（脑神经、脊神经），不要混淆结构分类与功能分类。"
+          );
+        } else if (
+          top === "神经元" ||
+          top === "树突的功能" ||
+          top === "轴突的功能"
+        ) {
+          parts.push(
+            "神经元结构与功能对应仍需加强，牢记「树突接受、轴突传出、神经元是基本单位」等核心结论。"
+          );
+        } else if (top === "自主神经调节") {
+          parts.push(
+            "自主神经调节部分可结合生活实例理解交感神经与副交感神经的拮抗作用，尤其注意紧张状态下心跳加快的调节机制。"
+          );
+        }
+      }
+    }
+
+    if (pct >= 90 && wrongQCount > 0) {
+      parts.push(
+        "整体水平较高，针对少量疏漏精练即可；建议将本次错题整理进错题本，周末回顾一次。"
+      );
+    } else if (pct >= 60 && pct < 90) {
+      parts.push(
+        "你已经走在正确的学习轨道上，只要针对薄弱模块专项突破，正确率会有明显提升。加油，坚持订正！"
+      );
+    } else if (pct < 60) {
+      parts.push(
+        "不要气馁，神经调节是整章的重点与难点。建议先通读教材相关小节，再使用本系统重新闯关，关注首次作答正确率的变化。"
+      );
+    } else if (pct >= 90 && wrongQCount === 0) {
+      parts.push("期待你在课堂上主动分享学习心得，帮助同学共同进步。");
+    }
+
+    return parts.join("\n");
+  }
+
+  function plainCommentToHtml(text) {
+    return text
+      .split("\n")
+      .filter(Boolean)
+      .map(function (para) {
+        return "<p>" + escapeHtml(para) + "</p>";
+      })
+      .join("");
   }
 
   function generateStudyTips(weakSorted) {
@@ -368,31 +463,164 @@
     return tips;
   }
 
-  function showResults() {
-    showScreen("result");
+  function buildSessionSnapshot() {
     const total = questions.length;
     let firstOk = 0;
     for (let i = 0; i < total; i++) {
       if (firstAttemptCorrect[i]) firstOk += 1;
     }
-    const pct = total ? Math.round((firstOk / total) * 1000) / 10 : 0;
+    const accuracyPct = total ? Math.round((firstOk / total) * 1000) / 10 : 0;
+    const wrongQuestionLines = collectWrongQuestionLines();
+    const weakKnowledgeList = collectWeakKnowledgeList();
+    const weakSorted = getWeakSorted();
 
-    els.statAccuracy.textContent = pct + "%";
-    els.statFirstCorrect.textContent = firstOk + " / " + total;
-    els.statTotal.textContent = String(total);
-    els.statErrors.textContent = String(totalWrongAttempts);
-
-    if (els.statRing) {
-      els.statRing.style.transform = "rotate(" + (pct * 3.6 - 45) + "deg)";
+    let wrongQuestionCount = 0;
+    for (let i = 0; i < total; i++) {
+      if (everWrongOnQuestion[i]) wrongQuestionCount += 1;
     }
 
-    const weakSorted = Object.keys(knowledgeErrorCount)
-      .map(function (k) {
-        return [k, knowledgeErrorCount[k]];
-      })
-      .sort(function (a, b) {
-        return b[1] - a[1];
-      });
+    const stats = {
+      firstOk: firstOk,
+      total: total,
+      accuracyPct: accuracyPct,
+      wrongQuestionCount: wrongQuestionCount,
+      wrongTimes: totalWrongAttempts,
+      wrongQuestionLines: wrongQuestionLines,
+      weakKnowledgeList: weakKnowledgeList,
+      weakSorted: weakSorted,
+    };
+
+    const aiCommentPlain = generateTeacherCommentPlain(stats);
+
+    return {
+      stats: stats,
+      accuracyDisplay: accuracyPct + "%",
+      wrongQuestionsText: formatWrongQuestionsText(wrongQuestionLines),
+      weakKnowledgeText: formatWeakKnowledgeText(weakKnowledgeList),
+      aiCommentPlain: aiCommentPlain,
+      aiCommentHtml: plainCommentToHtml(aiCommentPlain),
+    };
+  }
+
+  /** 将闯关结果同步至 teacherData（姓名、班级由表单填写） */
+  function syncTeacherData() {
+    if (!sessionSnapshot) {
+      sessionSnapshot = buildSessionSnapshot();
+    }
+    teacherData.accuracy = sessionSnapshot.accuracyDisplay;
+    teacherData.wrongQuestions = sessionSnapshot.wrongQuestionsText;
+    teacherData.weakKnowledge = sessionSnapshot.weakKnowledgeText;
+    teacherData.aiComment = sessionSnapshot.aiCommentPlain;
+    if (els.studentName) {
+      teacherData.studentName = els.studentName.value.trim();
+    }
+    if (els.className) {
+      teacherData.className = els.className.value.trim();
+    }
+    return teacherData;
+  }
+
+  function buildTencentFormUrl(data) {
+    const base = TENCENT_FORM_URL.replace(/\?$/, "");
+    const sep = base.indexOf("?") >= 0 ? "&" : "?";
+    const fields = {
+      q1: data.studentName || "",
+      q2: data.className || "",
+      q3: data.accuracy || "",
+      q4: data.wrongQuestions || "",
+      q5: data.weakKnowledge || "",
+      q6: data.aiComment || "",
+    };
+    const pairs = Object.keys(fields).map(function (key) {
+      return key + "=" + encodeURIComponent(fields[key]);
+    });
+    return base + sep + pairs.join("&");
+  }
+
+  function showReportHint(message, isOk) {
+    if (!els.reportHint) return;
+    els.reportHint.hidden = false;
+    els.reportHint.textContent = message;
+    els.reportHint.classList.toggle("report-hint--ok", !!isOk);
+  }
+
+  function hideReportHint() {
+    if (!els.reportHint) return;
+    els.reportHint.hidden = true;
+    els.reportHint.classList.remove("report-hint--ok");
+  }
+
+  function submitLearningReport() {
+    hideReportHint();
+
+    const name = els.studentName ? els.studentName.value.trim() : "";
+    const cls = els.className ? els.className.value.trim() : "";
+
+    if (els.studentName) {
+      els.studentName.classList.toggle("form-input--error", !name);
+    }
+    if (els.className) {
+      els.className.classList.toggle("form-input--error", !cls);
+    }
+
+    if (!name || !cls) {
+      showReportHint("请先填写学生姓名和班级后再提交。", false);
+      return;
+    }
+
+    const data = syncTeacherData();
+    if (data.studentName) {
+      data.aiComment = data.studentName + "同学，" + data.aiComment;
+    }
+    const url = buildTencentFormUrl(data);
+
+    try {
+      localStorage.setItem(
+        "neuralReportDraft",
+        JSON.stringify({
+          studentName: data.studentName,
+          className: data.className,
+        })
+      );
+    } catch (e) {
+      /* 忽略本地存储不可用 */
+    }
+
+    const win = window.open(url, "_blank", "noopener,noreferrer");
+    if (!win) {
+      window.location.href = url;
+    }
+
+    showReportHint("学习报告已生成，正在打开腾讯问卷页面；若未自动跳转请允许浏览器弹窗。", true);
+  }
+
+  function restoreReportDraft() {
+    try {
+      const raw = localStorage.getItem("neuralReportDraft");
+      if (!raw || !els.studentName || !els.className) return;
+      const draft = JSON.parse(raw);
+      if (draft.studentName) els.studentName.value = draft.studentName;
+      if (draft.className) els.className.value = draft.className;
+    } catch (e) {
+      /* 忽略 */
+    }
+  }
+
+  function showResults() {
+    showScreen("result");
+    sessionSnapshot = buildSessionSnapshot();
+    const stats = sessionSnapshot.stats;
+
+    els.statAccuracy.textContent = sessionSnapshot.accuracyDisplay;
+    els.statFirstCorrect.textContent = stats.firstOk + " / " + stats.total;
+    els.statTotal.textContent = String(stats.total);
+    els.statErrors.textContent = String(stats.wrongTimes);
+
+    if (els.statRing) {
+      els.statRing.style.transform = "rotate(" + (stats.accuracyPct * 3.6 - 45) + "deg)";
+    }
+
+    const weakSorted = stats.weakSorted;
 
     els.weakKnowledge.innerHTML = "";
     if (weakSorted.length === 0) {
@@ -409,7 +637,7 @@
       });
     }
 
-    els.aiComment.innerHTML = generateAIComment(firstOk, total, weakSorted);
+    els.aiComment.innerHTML = sessionSnapshot.aiCommentHtml;
 
     els.studyTips.innerHTML = "";
     generateStudyTips(weakSorted).forEach(function (tip) {
@@ -417,6 +645,10 @@
       li.textContent = tip;
       els.studyTips.appendChild(li);
     });
+
+    syncTeacherData();
+    restoreReportDraft();
+    hideReportHint();
   }
 
   function onSubmit() {
@@ -482,13 +714,36 @@
     knowledgeErrorCount = {};
     totalWrongAttempts = 0;
     awaitingCorrect = false;
+    sessionSnapshot = null;
+    hideReportHint();
     showScreen("quiz");
     renderQuestion();
   }
 
   els.btnSubmit.addEventListener("click", onSubmit);
   els.btnRestart.addEventListener("click", startQuiz);
-  els.headerMeta.textContent = "AI FORMATIVE · v2";
+
+  if (els.btnSubmitReport) {
+    els.btnSubmitReport.addEventListener("click", submitLearningReport);
+  }
+
+  if (els.studentName) {
+    els.studentName.addEventListener("input", function () {
+      els.studentName.classList.remove("form-input--error");
+    });
+  }
+  if (els.className) {
+    els.className.addEventListener("input", function () {
+      els.className.classList.remove("form-input--error");
+    });
+  }
+
+  els.headerMeta.textContent = "AI FORMATIVE · v3";
+
+  /** 供教师端或控制台调试读取 */
+  window.getTeacherData = function () {
+    return syncTeacherData();
+  };
 
   loadQuestions()
     .then(function (data) {

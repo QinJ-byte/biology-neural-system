@@ -131,6 +131,47 @@
         <ul class="tips-list" id="studyTips"></ul>
       </div>
 
+      <div class="result-block result-block--submit">
+        <h3>
+          <span class="block-icon block-icon--submit" aria-hidden="true">◎</span>
+          学习报告提交
+        </h3>
+        <p class="result-block__desc">填写姓名与班级后提交，系统将自动汇总本次闯关数据并跳转腾讯问卷。</p>
+        <form class="report-form" id="reportForm" novalidate>
+          <div class="form-row">
+            <label class="form-label" for="studentName">学生姓名</label>
+            <input
+              type="text"
+              class="form-input"
+              id="studentName"
+              name="studentName"
+              placeholder="请输入姓名"
+              autocomplete="name"
+              maxlength="32"
+              required
+            />
+          </div>
+          <div class="form-row">
+            <label class="form-label" for="className">班级</label>
+            <input
+              type="text"
+              class="form-input"
+              id="className"
+              name="className"
+              placeholder="例如：高一（3）班"
+              autocomplete="organization"
+              maxlength="32"
+              required
+            />
+          </div>
+          <button type="button" class="btn btn--submit-report" id="btnSubmitReport">
+            <span class="btn__text">提交学习报告</span>
+            <span class="btn__glow" aria-hidden="true"></span>
+          </button>
+          <p class="report-hint" id="reportHint" hidden role="alert"></p>
+        </form>
+      </div>
+
       <button type="button" class="btn btn--cta" id="btnRestart">重新闯关</button>
     </section>
   </main>
